@@ -11,16 +11,4 @@ return {
   show_colours = {
     en = "Show colours"
   },
-  [4] = {
-    en = "4"
-  },
-  [3] = {
-    en = "3"
-  },
-  [2] = {
-    en = "2"
-  },
-  [1] = {
-    en = "1"
-    }
 }
