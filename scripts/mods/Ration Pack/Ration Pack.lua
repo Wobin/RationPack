@@ -3,7 +3,7 @@ Title: Ration Pack
 Author: Wobin
 Date: 22/03/2023
 Repository: https://github.com/Wobin/RationPack
-Version: 3.0
+Version: 3.1
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
@@ -76,7 +76,9 @@ local check_background_colour = function(marker)
   local remaining_charges = get_charges(marker)                            
   if remaining_charges and remaining_charges ~= charge then          
     charge_lookup[marker.id] = remaining_charges
-    marker.widget.style.background.color = charge_colour[remaining_charges]                    
+    if mod:get("show_colours") then
+      marker.widget.style.background.color = charge_colour[remaining_charges]                    
+    end
   end
 end
 
