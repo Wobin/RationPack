@@ -3,7 +3,7 @@ Title: Ration Pack
 Author: Wobin
 Date: 22/03/2023
 Repository: https://github.com/Wobin/RationPack
-Version: 3.1
+Version: 3.2
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
