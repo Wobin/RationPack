@@ -3,12 +3,15 @@ Title: Ration Pack
 Author: Wobin
 Date: 22/03/2023
 Repository: https://github.com/Wobin/RationPack
-Version: 3.3
+Version: 4.0
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
 local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
 local Pickups = require("scripts/settings/pickup/pickups")
+
+local healthstations = {}
+local interactee = {}
 
 local charge_colour = {
   [4] = Color.teal(255, true),
@@ -54,7 +57,7 @@ local is_ammo_icon = function(model)
 end
 
 local get_charges = function(marker)
-  return GameSession.game_object_field(Managers.state.game_session:game_session(), Managers.state.unit_spawner:game_object_id(marker.unit), "charges")
+  return (not healthstations[marker.unit] and GameSession.game_object_field(Managers.state.game_session:game_session(), Managers.state.unit_spawner:game_object_id(marker.unit), "charges")) or healthstations[marker.unit]._charge_amount
 end
 
 local get_marker = function(self, unit)
@@ -64,26 +67,28 @@ local get_marker = function(self, unit)
 end
 
 local text_change = function(marker, model)
-  if not mod:get("show_numbers") then return end  
-  marker.widget.content.remaining_count = charge_lookup[marker.id]          
-  marker.widget.style.remaining_count.offset[1] = baseOffset[1] + xoffset[ charge_lookup[marker.id] ]      
+  if healthstations[marker.unit] or not mod:get("show_numbers") then return end  
+  local remaining_charges = get_charges(marker)    
+  marker.widget.content.remaining_count = remaining_charges
+  marker.widget.style.remaining_count.offset[1] = baseOffset[1] + xoffset[ remaining_charges ]      
   if mod:get("show_colours") then
-    marker.widget.style.remaining_count.text_color = fontContrast[ charge_lookup[marker.id] ]
+    marker.widget.style.remaining_count.text_color = fontContrast[ remaining_charges ]
   end                            
 end
 
 
 
 local check_background_colour = function(marker)
-  local charge = charge_lookup[marker.id] or 0
-  local remaining_charges = get_charges(marker)                            
+  local charge = charge_lookup[marker.unit] or 0
+  local remaining_charges = get_charges(marker)                      
   if remaining_charges and remaining_charges ~= charge then          
-    charge_lookup[marker.id] = remaining_charges
+    charge_lookup[marker.unit] = remaining_charges
     if mod:get("show_colours") then
       marker.widget.style.background.color = charge_colour[remaining_charges]                    
     end
   end
 end
+
 
 
 mod.on_all_mods_loaded = function()
@@ -96,18 +101,21 @@ mod.on_all_mods_loaded = function()
   
   
     mod:hook_safe(CLASS.HudElementWorldMarkers, "event_add_world_marker_unit",  function (self, marker_type, unit, callback, data)
-        if is_ammo_crate(unit) then           
-          local marker = get_marker(self, unit)           
+        if is_ammo_crate(unit) or healthstations[unit] then           
+          local marker = get_marker(self, unit)              
+          --marker.block_max_distance = true          
+          marker.life_time = false
+          charge_lookup[marker.unit] = 0
           for i,v in ipairs(marker.widget.passes) do
             if v.value_id == "remaining_count" then              
-              v.visibility_function = function() return mod:get("show_numbers") end
+              v.visibility_function = function() return not healthstations[unit] and mod:get("show_numbers") end
               v.change_function = function(model) text_change(marker, model) end              
             end
             if v.value_id == "background" then
               v.change_function = function(model, style) check_background_colour(marker) end           
             end
             if v.value_id == "icon" then
-              v.visibility_function = function(model) return not mod:get("show_numbers") end        
+              v.visibility_function = function(model) return healthstations[marker.unit] or not mod:get("show_numbers") end        
             end
           end
           marker.widget.dirty = true
@@ -123,4 +131,19 @@ mod.on_all_mods_loaded = function()
           marker.widget.content.remaining_count = nil
         end
     end)
+   
+   mod:hook_require("scripts/extension_systems/health_station/health_station_extension", function(healthStation)
+    mod:hook_safe(healthStation, "_update_indicators",function (self)        
+      if not healthstations[self._unit] then
+        healthstations[self._unit] = self        
+        interactee[self] = ScriptUnit.fetch_component_extension(self._unit, "interactee_system")
+        mod:hook(interactee[self], "show_marker", function(func, self, interactor_unit)            
+            if healthstations[self._unit]._charge_amount > 0 then
+              return function() return true end
+            end
+            return func(self, interactor_unit)
+          end)             
+      end
+    end)
+end)
  end 
