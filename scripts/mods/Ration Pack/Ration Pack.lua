@@ -1,9 +1,9 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 22/03/2023
+Date: 04/06/2023
 Repository: https://github.com/Wobin/RationPack
-Version: 4.0
+Version: 4.1
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
