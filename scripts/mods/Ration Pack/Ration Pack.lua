@@ -1,9 +1,9 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 04/06/2023
+Date: 07/10/2023
 Repository: https://github.com/Wobin/RationPack
-Version: 4.1
+Version: 4.2
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
@@ -46,8 +46,10 @@ table.merge(text_style, table.clone(UIFontSettings.header_2))
 
 local is_ammo_crate = function(target)
   return (target and 
+  Unit and
   Unit.alive(target) and
   Unit.has_data(target, "pickup_type") and
+  Unit.get_data(target, "pickup_type") ~= nil and
   Pickups.by_name[Unit.get_data(target, "pickup_type")] ~= nil and 
   Pickups.by_name[Unit.get_data(target, "pickup_type")].ammo_crate) or false 
 end
