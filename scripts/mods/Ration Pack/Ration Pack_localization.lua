@@ -12,11 +12,11 @@ return {
 	show_numbers = {
 		en = "Show numbers",
 		["zh-cn"] = "显示数字",
-		ru = "Показать числа",
+		ru = "Показывать числа",
 	},
 	show_colours = {
 		en = "Show colours",
 		["zh-cn"] = "显示颜色",
-		ru = "Показать цвета",
+		ru = "Показывать цвета",
 	},
 }
