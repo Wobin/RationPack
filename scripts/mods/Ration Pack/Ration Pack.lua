@@ -1,14 +1,15 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 07/10/2023
+Date: 24/01/2024
 Repository: https://github.com/Wobin/RationPack
-Version: 4.3
+Version: 5.0
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
 local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
 local Pickups = require("scripts/settings/pickup/pickups")
+local BuffSettings = require("scripts/settings/buff/buff_settings")
 
 local healthstations = {}
 local interactee = {}
@@ -25,8 +26,7 @@ local fontContrast = {
   [2] = Color.terminal_text_body_dark(255, true),
   [1] = Color.terminal_text_header(255, true)
   }
-local  xoffset = {[4] = -2, [3] = 0, [2] = 0, [1] = 0}
-local baseOffset = {-10,10,4}
+local  xoffset = {[4] = 2, [3] = 0, [2] = 0, [1] = 0}
 
 local text_pass = {
   style_id = 'remaining_count',
@@ -36,7 +36,7 @@ local text_pass = {
 }
         
 local text_style = {
-  offset = {-10,10,4},
+  offset = {-10,20,4},
   size= {64,64},
   vertical_alignment = "center",
   horizontal_alignment  = "left"
@@ -54,10 +54,6 @@ local is_ammo_crate = function(target)
   Pickups.by_name[Unit.get_data(target, "pickup_type")].ammo_crate) or false 
 end
 
-local is_ammo_icon = function(model)
-  return model.icon == 'content/ui/materials/hud/interactions/icons/ammunition' 
-end
-
 local get_charges = function(marker)
   return (not healthstations[marker.unit] and GameSession.game_object_field(Managers.state.game_session:game_session(), Managers.state.unit_spawner:game_object_id(marker.unit), "charges")) or healthstations[marker.unit]._charge_amount
 end
@@ -70,15 +66,23 @@ end
 
 local text_change = function(marker, model)
   if healthstations[marker.unit] or not mod:get("show_numbers") then return end  
-  local remaining_charges = get_charges(marker)    
-  marker.widget.content.remaining_count = remaining_charges
-  marker.widget.style.remaining_count.offset[1] = baseOffset[1] + xoffset[ remaining_charges ]      
+  local remaining_charges = get_charges(marker)      
+  marker.widget.content.remaining_count = remaining_charges  
+  
+  local scale = marker.scale
+	local default_font_size = text_style.font_size
+  marker.widget.style.remaining_count.font_size = math.max(default_font_size * scale, 1)
+
+  local lerp_multiplier = 0.02
+  local default_offset = text_style.offset
+  local offset = marker.widget.style.remaining_count.offset
+			offset[1] = default_offset[1] * (scale) - xoffset[remaining_charges]
+			offset[2] = math.auto_lerp(0.4, 1.0, 24, 10, scale)
+      
   if mod:get("show_colours") then
     marker.widget.style.remaining_count.text_color = fontContrast[ remaining_charges ]
   end                            
 end
-
-
 
 local check_background_colour = function(marker)
   local charge = charge_lookup[marker.unit] or 0
@@ -91,7 +95,27 @@ local check_background_colour = function(marker)
   end
 end
 
+local get_enhanced = function(style)      
+		local side_system = Managers.state.extension:system("side_system")    
+		local side = side_system:get_side_from_name(side_system:get_default_player_side_name())
+		local player_units = side.player_units
+		local buff_keywords = BuffSettings.keywords
+    local improved_keyword
+		for _, player_unit in pairs(player_units) do
+			local buff_extension = ScriptUnit.has_extension(player_unit, "buff_system")
 
+			if buff_extension then
+				improved_keyword = buff_extension:has_keyword(buff_keywords.improved_ammo_pickups)        
+				if improved_keyword then
+          style.color = Color.coral(255, true)
+					break
+				end
+			end
+		end 
+    if not improved_keyword then
+      style.color = Color.ui_terminal(255,true)
+    end
+  end
 
 mod.on_all_mods_loaded = function()
     mod:hook(CLASS.HudElementWorldMarkers, "_create_widget", function(func, self, name, definition)       
@@ -101,17 +125,20 @@ mod.on_all_mods_loaded = function()
       return func(self, name, definition)
     end)
   
+  local counter = 0
   
     mod:hook_safe(CLASS.HudElementWorldMarkers, "event_add_world_marker_unit",  function (self, marker_type, unit, callback, data)
         if is_ammo_crate(unit) or healthstations[unit] then           
           local marker = get_marker(self, unit)              
-          --marker.block_max_distance = true          
           marker.life_time = false
           charge_lookup[marker.unit] = 0
           for i,v in ipairs(marker.widget.passes) do
+            if is_ammo_crate(unit) and v.value_id == "ring" then
+              v.change_function = function(model, style) get_enhanced(style) end                
+            end
             if v.value_id == "remaining_count" then              
               v.visibility_function = function() return not healthstations[unit] and mod:get("show_numbers") end
-              v.change_function = function(model) text_change(marker, model) end              
+              v.change_function = function(model, style) text_change(marker, model) end              
             end
             if v.value_id == "background" then
               v.change_function = function(model, style) check_background_colour(marker) end           
