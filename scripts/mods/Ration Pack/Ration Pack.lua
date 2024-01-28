@@ -1,9 +1,9 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 24/01/2024
+Date: 28/01/2024
 Repository: https://github.com/Wobin/RationPack
-Version: 5.0
+Version: 5.1
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
@@ -71,13 +71,23 @@ local text_change = function(marker, model)
   
   local scale = marker.scale
 	local default_font_size = text_style.font_size
-  marker.widget.style.remaining_count.font_size = math.max(default_font_size * scale, 1)
+  if marker.is_clamped then
+    marker.widget.style.remaining_count.font_size = default_font_size
+  else
+    marker.widget.style.remaining_count.font_size = math.max(default_font_size * scale, 1)
+  end
 
+  
   local lerp_multiplier = 0.02
   local default_offset = text_style.offset
   local offset = marker.widget.style.remaining_count.offset
+  if not marker.is_clamped then
 			offset[1] = default_offset[1] * (scale) - xoffset[remaining_charges]
 			offset[2] = math.auto_lerp(0.4, 1.0, 24, 10, scale)
+  else
+			offset[1] = default_offset[1] - xoffset[remaining_charges]
+			offset[2] = 10    
+  end
       
   if mod:get("show_colours") then
     marker.widget.style.remaining_count.text_color = fontContrast[ remaining_charges ]
