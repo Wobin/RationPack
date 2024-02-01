@@ -15,6 +15,11 @@ return {
 				setting_id = "show_colours",
 				type = "checkbox",
 				default_value = false
+			},
+      {
+				setting_id = "show_medicae_radius",
+				type = "checkbox",
+				default_value = false
 			}
 		}
   }

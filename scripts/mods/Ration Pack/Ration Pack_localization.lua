@@ -19,4 +19,7 @@ return {
 		["zh-cn"] = "显示颜色",
 		ru = "Показывать цвета",
 	},
+  show_medicae_radius = {
+    en = "Show Medicae radius and remaining",
+    }
 }

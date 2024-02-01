@@ -1,15 +1,21 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 28/01/2024
+Date: 02/02/2024
 Repository: https://github.com/Wobin/RationPack
-Version: 5.1
+Version: 6.0
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
 local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
 local Pickups = require("scripts/settings/pickup/pickups")
 local BuffSettings = require("scripts/settings/buff/buff_settings")
+local medical_crate_config = require("scripts/settings/deployables/medical_crate")
+local decal_unit_name = "content/levels/training_grounds/fx/decal_aoe_indicator"
+local package_name = "content/levels/training_grounds/missions/mission_tg_basic_combat_01"
+local decals = mod:persistent_table("medical_crate_decals")
+local range_decals = mod:persistent_table("medical_crate_range_decals")
+local NumericUI 
 
 local healthstations = {}
 local interactee = {}
@@ -44,7 +50,9 @@ local text_style = {
 
 table.merge(text_style, table.clone(UIFontSettings.header_2))
 
-local is_ammo_crate = function(target)
+-- Ammo Pack functions --
+
+local function is_ammo_crate(target)
   return (target and 
   Unit and
   Unit.alive(target) and
@@ -54,17 +62,17 @@ local is_ammo_crate = function(target)
   Pickups.by_name[Unit.get_data(target, "pickup_type")].ammo_crate) or false 
 end
 
-local get_charges = function(marker)
+local function get_charges(marker)
   return (not healthstations[marker.unit] and GameSession.game_object_field(Managers.state.game_session:game_session(), Managers.state.unit_spawner:game_object_id(marker.unit), "charges")) or healthstations[marker.unit]._charge_amount
 end
 
-local get_marker = function(self, unit)
+local function get_marker(self, unit)
   for _, marker in ipairs(self._markers) do
     if marker.unit == unit then return marker end
   end
 end
 
-local text_change = function(marker, model)
+local function text_change(marker, model)
   if healthstations[marker.unit] or not mod:get("show_numbers") then return end  
   local remaining_charges = get_charges(marker)      
   marker.widget.content.remaining_count = remaining_charges  
@@ -94,7 +102,7 @@ local text_change = function(marker, model)
   end                            
 end
 
-local check_background_colour = function(marker)
+local function check_background_colour(marker)
   local charge = charge_lookup[marker.unit] or 0
   local remaining_charges = get_charges(marker)                      
   if remaining_charges and remaining_charges ~= charge then          
@@ -105,7 +113,8 @@ local check_background_colour = function(marker)
   end
 end
 
-local get_enhanced = function(style)      
+-- Field Improvisation Check -- 
+local function has_field_improvisation()      
 		local side_system = Managers.state.extension:system("side_system")    
 		local side = side_system:get_side_from_name(side_system:get_default_player_side_name())
 		local player_units = side.player_units
@@ -117,17 +126,86 @@ local get_enhanced = function(style)
 			if buff_extension then
 				improved_keyword = buff_extension:has_keyword(buff_keywords.improved_ammo_pickups)        
 				if improved_keyword then
-          style.color = Color.coral(255, true)
-					break
+          return true					
 				end
 			end
 		end 
     if not improved_keyword then
-      style.color = Color.ui_terminal(255,true)
+      return false
     end
   end
 
+local function get_enhanced(style)
+  if has_field_improvisation() then
+    style.color = Color.steel_blue(255,true)
+  else
+    style.color = Color.ui_terminal(255,true)
+  end
+end
+
+
+--- Medikit Aura Functions ---
+
+local function pre_unit_destroyed(unit)
+	local world = Unit.world(unit)
+	local decal_unit = decals[unit]
+	if decal_unit then
+		World.destroy_unit(world, decal_unit)
+		decals[unit] = nil
+	end
+  local range_decal = range_decals[unit]
+  if range_decal then
+    World.destroy_unit(world, range_decal)
+		range_decals[unit] = nil
+  end
+end
+
+local function set_decal_colour(decal_unit, r, g, b)
+  local material_value = Quaternion.identity()
+	Quaternion.set_xyzw(material_value, r, g, b, 0.5)
+	Unit.set_vector4_for_material(decal_unit, "projector", "particle_color", material_value, true)
+	Unit.set_scalar_for_material( decal_unit, "projector", "color_multiplier", 0.05)
+end
+
+local function get_decal_unit(unit, r, g, b)
+  
+	local world = Unit.world(unit)
+	local position = Unit.local_position(unit, 1)
+
+	local decal_unit = World.spawn_unit_ex(world, decal_unit_name, nil, position + Vector3(0, 0, 0.1))
+
+	local diameter = medical_crate_config.proximity_radius * 2 + 1.5
+	Unit.set_local_scale(decal_unit, 1, Vector3(diameter, diameter, 1))
+  
+  set_decal_colour(decal_unit, r, g, b)
+  
+  return decal_unit
+end
+
+local function unit_spawned(unit, dont_load_package)
+	if not mod:get("show_medicae_radius") then
+		return
+	end
+
+	if not Managers.package:has_loaded(package_name) and not dont_load_package then
+		Managers.package:load(package_name, "Ration Pack", function()
+			unit_spawned(unit, true)
+		end)
+		return
+	end
+  
+	if not unit then
+		return
+	end
+
+	decals[unit] = get_decal_unit(unit, 0, 1, 1)
+  if not NumericUI:get("show_medical_crate_radius") then
+    range_decals[unit] = get_decal_unit(unit, 1, 1, 1)
+  end
+end
+
 mod.on_all_mods_loaded = function()
+    NumericUI = get_mod("NumericUI")
     mod:hook(CLASS.HudElementWorldMarkers, "_create_widget", function(func, self, name, definition)       
       definition.passes[#definition.passes + 1] = table.clone(text_pass)
       definition.style.remaining_count = table.clone(text_style)
@@ -184,5 +262,38 @@ mod.on_all_mods_loaded = function()
           end)             
       end
     end)
-end)
+  end)
+
+  mod:hook_require("scripts/extension_systems/unit_templates", function(instance)
+    mod:hook_safe(instance.medical_crate_deployable, "unit_spawned", function(unit)
+      unit_spawned(unit, false)
+    end)
+
+    if instance.medical_crate_deployable.pre_unit_destroyed then
+      mod:hook_safe(instance.medical_crate_deployable, "pre_unit_destroyed", pre_unit_destroyed)
+    else
+      instance.medical_crate_deployable.pre_unit_destroyed = pre_unit_destroyed
+    end
+  end)
+ local reserve = 0
+ local updateThrottle = {}
+  mod:hook_safe(CLASS.ProximityHeal, "update", function(self, dt,t)
+      if not mod:get("show_medicae_radius") then return end
+      if not self._unit or not decals[self._unit] then return end
+      -- throttle updates
+      if not updateThrottle[self._unit] then updateThrottle[self._unit] = t end
+      if t - updateThrottle[self._unit] < 0.5 then return end
+      updateThrottle[self._unit] = t 
+      
+      if has_field_improvisation() then
+        set_decal_colour(decals[self._unit], 11/255 , 105/255, 116/255)
+      else
+        set_decal_colour(decals[self._unit], 0, 1, 0)
+      end
+      if self._amount_of_damage_healed ~= reserve then
+        local diameter =  math.lerp(medical_crate_config.proximity_radius * 2 + 1.5, 1.5, self._amount_of_damage_healed / self._heal_reserve)
+        Unit.set_local_scale(decals[self._unit], 1, Vector3(diameter, diameter, 1))
+        reserve = self._amount_of_damage_healed
+      end
+    end)
  end 
