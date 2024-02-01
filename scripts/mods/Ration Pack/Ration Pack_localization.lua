@@ -21,5 +21,6 @@ return {
 	},
   show_medicae_radius = {
     en = "Show Medicae radius and remaining",
+    ["zh-cn"] = "显示医疗箱范围和剩余信息",
     }
 }
