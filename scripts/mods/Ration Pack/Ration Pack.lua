@@ -1,9 +1,9 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 02/02/2024
+Date: 17/02/2024
 Repository: https://github.com/Wobin/RationPack
-Version: 6.0
+Version: 6.1
 ]]--
 local mod = get_mod("Ration Pack")
 local charge_lookup = {}
@@ -199,7 +199,7 @@ local function unit_spawned(unit, dont_load_package)
 	end
 
 	decals[unit] = get_decal_unit(unit, 0, 1, 1)
-  if not NumericUI:get("show_medical_crate_radius") then
+  if not NumericUI or not NumericUI:get("show_medical_crate_radius") then
     range_decals[unit] = get_decal_unit(unit, 1, 1, 1)
   end
 end
