@@ -264,17 +264,18 @@ mod.on_all_mods_loaded = function()
     end)
   end)
 
-  mod:hook_require("scripts/extension_systems/unit_templates", function(instance)
-    mod:hook_safe(instance.medical_crate_deployable, "unit_spawned", function(unit)
-      unit_spawned(unit, false)
+mod:hook_require("scripts/extension_systems/unit_templates", function(instance)
+    mod:hook_safe(instance.medical_crate_deployable, "local_init", function(unit, config, template_context, game_object_data, side_id, deployable, placed_on_unit, owner_unit_or_nil)
+        unit_spawned(unit, false)
     end)
 
     if instance.medical_crate_deployable.pre_unit_destroyed then
-      mod:hook_safe(instance.medical_crate_deployable, "pre_unit_destroyed", pre_unit_destroyed)
+        mod:hook_safe(instance.medical_crate_deployable, "pre_unit_destroyed", pre_unit_destroyed)
     else
-      instance.medical_crate_deployable.pre_unit_destroyed = pre_unit_destroyed
+        instance.medical_crate_deployable.pre_unit_destroyed = pre_unit_destroyed
     end
-  end)
+end)
+	
  local reserve = 0
  local updateThrottle = {}
   mod:hook_safe(CLASS.ProximityHeal, "update", function(self, dt,t)
