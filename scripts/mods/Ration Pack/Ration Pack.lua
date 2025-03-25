@@ -1,20 +1,22 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 17/02/2024
+Date: 25/03/2025
 Repository: https://github.com/Wobin/RationPack
-Version: 6.1
+Version: 6.3.3
 ]]--
 local mod = get_mod("Ration Pack")
+mod.version = "6.3.3"
 local charge_lookup = {}
 local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
 local Pickups = require("scripts/settings/pickup/pickups")
 local BuffSettings = require("scripts/settings/buff/buff_settings")
-local medical_crate_config = require("scripts/settings/deployables/medical_crate")
+local medical_crate_config = require("scripts/settings/deployables/templates/medical_crate")
 local decal_unit_name = "content/levels/training_grounds/fx/decal_aoe_indicator"
 local package_name = "content/levels/training_grounds/missions/mission_tg_basic_combat_01"
 local decals = mod:persistent_table("medical_crate_decals")
 local range_decals = mod:persistent_table("medical_crate_range_decals")
+local has_checked_package = mod:persistent_table("texture_check", {false})
 local NumericUI 
 
 local healthstations = {}
@@ -168,7 +170,7 @@ local function set_decal_colour(decal_unit, r, g, b)
 end
 
 local function get_decal_unit(unit, r, g, b)
-  
+
 	local world = Unit.world(unit)
 	local position = Unit.local_position(unit, 1)
 
@@ -198,6 +200,9 @@ local function unit_spawned(unit, dont_load_package)
 		return
 	end
 
+  
+  local unit_data_extension = ScriptUnit.extension(unit, "unit_data_system")
+  --mod:dump(unit_data_extension, "medkit", 1)
 	decals[unit] = get_decal_unit(unit, 0, 1, 1)
   if not NumericUI or not NumericUI:get("show_medical_crate_radius") then
     range_decals[unit] = get_decal_unit(unit, 1, 1, 1)
@@ -205,7 +210,13 @@ local function unit_spawned(unit, dont_load_package)
 end
 
 mod.on_all_mods_loaded = function()
+    mod:info(mod.version)
     NumericUI = get_mod("NumericUI")
+    local is_mod_loading = true
+    if mod:get("show_medicae_radius") then
+      Managers.package:load(package_name, "Ration Pack")
+    end
+  
     mod:hook(CLASS.HudElementWorldMarkers, "_create_widget", function(func, self, name, definition)       
       definition.passes[#definition.passes + 1] = table.clone(text_pass)
       definition.style.remaining_count = table.clone(text_style)
@@ -213,7 +224,7 @@ mod.on_all_mods_loaded = function()
       return func(self, name, definition)
     end)
   
-  local counter = 0
+    local counter = 0
   
     mod:hook_safe(CLASS.HudElementWorldMarkers, "event_add_world_marker_unit",  function (self, marker_type, unit, callback, data)
         if is_ammo_crate(unit) or healthstations[unit] then           
@@ -249,7 +260,7 @@ mod.on_all_mods_loaded = function()
         end
     end)
    
-   mod:hook_require("scripts/extension_systems/health_station/health_station_extension", function(healthStation)
+    mod:hook_require("scripts/extension_systems/health_station/health_station_extension", function(healthStation)
     mod:hook_safe(healthStation, "_update_indicators",function (self)        
       if not healthstations[self._unit] then
         healthstations[self._unit] = self        
@@ -263,21 +274,26 @@ mod.on_all_mods_loaded = function()
       end
     end)
   end)
-
-  mod:hook_require("scripts/extension_systems/unit_templates", function(instance)
-    mod:hook_safe(instance.medical_crate_deployable, "unit_spawned", function(unit)
-      unit_spawned(unit, false)
+    mod:hook_require("scripts/extension_systems/unit_templates", function(instance)    
+        if is_mod_loading then
+          mod:hook_safe(instance.medical_crate_deployable, "husk_init", function(unit)              
+            unit_spawned(unit, false)
+          end)
+          mod:hook_safe(instance.medical_crate_deployable, "local_init", function(unit)              
+            unit_spawned(unit, false)
+          end)
+          if instance.medical_crate_deployable.pre_unit_destroyed then
+            mod:hook_safe(instance.medical_crate_deployable, "pre_unit_destroyed", pre_unit_destroyed)
+          else
+            instance.medical_crate_deployable.pre_unit_destroyed = pre_unit_destroyed
+          end          
+        end
+        is_mod_loading = false
     end)
-
-    if instance.medical_crate_deployable.pre_unit_destroyed then
-      mod:hook_safe(instance.medical_crate_deployable, "pre_unit_destroyed", pre_unit_destroyed)
-    else
-      instance.medical_crate_deployable.pre_unit_destroyed = pre_unit_destroyed
-    end
-  end)
- local reserve = 0
- local updateThrottle = {}
-  mod:hook_safe(CLASS.ProximityHeal, "update", function(self, dt,t)
+  
+    local reserve = 0
+    local updateThrottle = {}
+    mod:hook_safe(CLASS.ProximityHeal, "update", function(self, dt,t)
       if not mod:get("show_medicae_radius") then return end
       if not self._unit or not decals[self._unit] then return end
       -- throttle updates
@@ -295,5 +311,5 @@ mod.on_all_mods_loaded = function()
         Unit.set_local_scale(decals[self._unit], 1, Vector3(diameter, diameter, 1))
         reserve = self._amount_of_damage_healed
       end
-    end)
+    end)    
  end 
