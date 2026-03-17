@@ -1,0 +1,18 @@
+name: upload-nexus-mods
+
+on:
+  release:
+    types: [ "published" ]
+
+
+jobs:
+  fetch-upload:
+    uses: wobin/DarktideModAutoUploader/.github/workflows/pack_mod.yml@v1.2
+    with:
+      nexusmods_mod_id: 93 
+      mod_version: ${{ github.event.release.name }}
+      mod_description: ${{ github.event.release.body }}
+      checkout_ref: ${{ github.event.release.tag_name }}
+    secrets:
+      NEXUSMODS_APIKEY: ${{ secrets.NEXUSMODS_APIKEY }}
+      NEXUSMODS_SESSION_COOKIE: ${{ secrets.NEXUSMODS_SESSION_COOKIE }}

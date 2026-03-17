@@ -1,13 +1,13 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 23/06/2025
+Date: 18/03/2026
 Repository: https://github.com/Wobin/RationPack
-Version: 6.4
+Version: 6.5
 ]] --
 local mod = get_mod("Ration Pack")
 
-mod.version = "6.4"
+mod.version = "6.5"
 local charge_lookup = {}
 local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
 local Pickups = require("scripts/settings/pickup/pickups")
@@ -77,8 +77,10 @@ local function get_marker(self, unit)
 end
 
 local function text_change(marker, model)
+  if not marker or not marker.unit or not marker.widget or not marker.widget.content or not marker.widget.style or not marker.widget.style.remaining_count or not marker.widget.style.remaining_count.offset then return end
   if healthstations[marker.unit] or not mod:get("show_numbers") then return end
   local remaining_charges = get_charges(marker)
+  if type(remaining_charges) ~= "number" or remaining_charges < 1 or remaining_charges > 4 then return end
   marker.widget.content.remaining_count = remaining_charges
 
   local scale = marker.scale
