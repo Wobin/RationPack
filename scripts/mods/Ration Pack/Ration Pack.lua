@@ -3,11 +3,11 @@ Title: Ration Pack
 Author: Wobin
 Date: 18/03/2026
 Repository: https://github.com/Wobin/RationPack
-Version: 6.5
+Version: 6.5.1
 ]] --
 local mod = get_mod("Ration Pack")
 
-mod.version = "6.5"
+mod.version = "6.5.1"
 local charge_lookup = {}
 local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
 local Pickups = require("scripts/settings/pickup/pickups")
@@ -66,8 +66,31 @@ local function is_ammo_crate(target)
 end
 
 local function get_charges(marker)
-  return (not healthstations[marker.unit] and GameSession.game_object_field(Managers.state.game_session:game_session(), Managers.state.unit_spawner:game_object_id(marker.unit), "charges")) or
-      healthstations[marker.unit]._charge_amount
+  local unit = marker and marker.unit
+  if not unit or not Unit or not Unit.alive(unit) then
+    return nil
+  end
+
+  -- fetch game_object_id as early as possible so we can bail before any field reads
+  local unit_spawner = Managers and Managers.state and Managers.state.unit_spawner
+  local game_object_id = unit_spawner and unit_spawner:game_object_id(unit)
+
+  local healthstation = healthstations[unit]
+  if healthstation and type(healthstation._charge_amount) == "number" then
+    return healthstation._charge_amount
+  end
+
+  if not game_object_id then
+    return nil
+  end
+
+  local game_session = Managers.state.game_session and Managers.state.game_session:game_session()
+  if not game_session then
+    return nil
+  end
+
+  local charges = GameSession.game_object_field(game_session, game_object_id, "charges")
+  return type(charges) == "number" and charges or nil
 end
 
 local function get_marker(self, unit)
@@ -221,6 +244,14 @@ function mod:apply_ration_pack_logic(marker)
     return
   end
 
+  -- ammo crates need a game object to read charges; healthstations use _charge_amount so are exempt
+  if is_ammo_crate(marker.unit) then
+    local unit_spawner = Managers and Managers.state and Managers.state.unit_spawner
+    if not unit_spawner or not unit_spawner:game_object_id(marker.unit) then
+      return
+    end
+  end
+
   if is_ammo_crate(marker.unit) or healthstations[marker.unit] then
     marker.life_time = false
     charge_lookup[marker.unit] = 0
@@ -236,7 +267,9 @@ function mod:apply_ration_pack_logic(marker)
         v.change_function = function(model, style) check_background_colour(marker) end
       end
       if v.value_id == "icon" then
-        v.visibility_function = function(model) return healthstations[marker.unit] or not mod:get("show_numbers") end
+        v.visibility_function = function(model)
+          return (healthstations[marker.unit] or not mod:get("show_numbers"))
+        end
       end
     end
     marker.widget.dirty = true
