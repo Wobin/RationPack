@@ -3,11 +3,11 @@ Title: Ration Pack
 Author: Wobin
 Date: 18/03/2026
 Repository: https://github.com/Wobin/RationPack
-Version: 6.5.1
+Version: 6.5.2
 ]] --
 local mod = get_mod("Ration Pack")
 
-mod.version = "6.5.1"
+mod.version = "6.5.2"
 local charge_lookup = {}
 local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
 local Pickups = require("scripts/settings/pickup/pickups")
@@ -57,6 +57,7 @@ table.merge(text_style, table.clone(UIFontSettings.header_2))
 
 local function is_ammo_crate(target)
   return (target and
+    type(target) == "userdata" and
     Unit and
     Unit.alive(target) and
     Unit.has_data(target, "pickup_type") and
@@ -67,7 +68,7 @@ end
 
 local function get_charges(marker)
   local unit = marker and marker.unit
-  if not unit or not Unit or not Unit.alive(unit) then
+  if type(unit) ~= "userdata" or not Unit or not Unit.alive(unit) then
     return nil
   end
 
