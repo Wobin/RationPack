@@ -3,7 +3,7 @@ Title: Ration Pack
 Author: Wobin
 Date: 18/03/2026
 Repository: https://github.com/Wobin/RationPack
-Version: 7.0
+Version: 7.1
 ]] --
 
 -- ============================================================================
@@ -11,7 +11,7 @@ Version: 7.0
 -- ============================================================================
 
 local mod = get_mod("Ration Pack")
-mod.version = "7.0"
+mod.version = "7.1"
 
 -- ============================================================================
 -- IMPORTS
@@ -195,7 +195,7 @@ local function get_charges(marker)
 
   -- Get charges from game session
   local game_session = Managers.state.game_session and Managers.state.game_session:game_session()
-  if not game_session then
+  if not game_session or not GameSession then
     return nil
   end
 
@@ -453,6 +453,7 @@ end
 -- ============================================================================
 
 mod.on_all_mods_loaded = function()
+  mod:info(mod.version)
   NumericUI = get_mod("NumericUI")
   local is_mod_loading = true
 
@@ -493,16 +494,19 @@ mod.on_all_mods_loaded = function()
 
           -- Update font scaling every frame
           if marker.widget.style and marker.widget.style.remaining_count then
-            local remaining_charges = get_charges(marker)
-            if is_valid_charge_count(remaining_charges) then
-              local default_font_size = TEXT_STYLE.font_size
-              local default_offset = TEXT_STYLE.offset
-              local offset = marker.widget.style.remaining_count.offset
-              local charge_xoffset = CHARGE_XOFFSET[remaining_charges] or 0
+            -- Only get charges for units that support it (ammo crates or health stations)
+            if is_ammo_crate(marker.unit) or healthstations[marker.unit] then
+              local remaining_charges = get_charges(marker)
+              if is_valid_charge_count(remaining_charges) then
+                local default_font_size = TEXT_STYLE.font_size
+                local default_offset = TEXT_STYLE.offset
+                local offset = marker.widget.style.remaining_count.offset
+                local charge_xoffset = CHARGE_XOFFSET[remaining_charges] or 0
 
-              marker.widget.style.remaining_count.font_size = default_font_size
-              offset[1] = default_offset[1] - charge_xoffset
-              offset[2] = default_offset[2]
+                marker.widget.style.remaining_count.font_size = default_font_size
+                offset[1] = default_offset[1] - charge_xoffset
+                offset[2] = default_offset[2]
+              end
             end
           end
         end
