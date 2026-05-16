@@ -1,9 +1,9 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 18/03/2026
+Date: 16/05/2026
 Repository: https://github.com/Wobin/RationPack
-Version: 7.1
+Version: 7.2
 ]] --
 
 -- ============================================================================
@@ -11,14 +11,12 @@ Version: 7.1
 -- ============================================================================
 
 local mod = get_mod("Ration Pack")
-mod.version = "7.1"
+mod.version = "7.2"
 
 -- ============================================================================
 -- IMPORTS
 -- ============================================================================
 
-local UIFontSettings = require("scripts/managers/ui/ui_font_settings")
-local Pickups = require("scripts/settings/pickup/pickups")
 local BuffSettings = require("scripts/settings/buff/buff_settings")
 local medical_crate_config = require("scripts/settings/deployables/templates/medical_crate")
 
@@ -68,35 +66,33 @@ local CHARGE_COLOR = {
   [1] = Color.red(255, true)
 }
 
--- Font colors for charge display
-local FONT_CONTRAST = {
-  [4] = Color.terminal_text_header(255, true),
-  [3] = Color.terminal_text_body_dark(255, true),
-  [2] = Color.terminal_text_body_dark(255, true),
-  [1] = Color.terminal_text_header(255, true)
+-- Roman numeral textures (preset_2N matches charge N, verified shipped via IconBrowser)
+local CHARGE_ICONS = {
+  [1] = "content/ui/materials/icons/presets/preset_21",
+  [2] = "content/ui/materials/icons/presets/preset_22",
+  [3] = "content/ui/materials/icons/presets/preset_23",
+  [4] = "content/ui/materials/icons/presets/preset_24",
 }
 
--- X-axis offset for charge numbers
-local CHARGE_XOFFSET = { [4] = 2, [3] = 0, [2] = 0, [1] = 0 }
-
--- Text pass definition for widget rendering
-local TEXT_PASS = {
-  style_id = 'remaining_count',
-  pass_type = 'text',
-  value_id = 'remaining_count',
+-- Texture pass definition for widget rendering
+local ICON_PASS = {
+  style_id = 'remaining_count_icon',
+  pass_type = 'texture',
+  value_id = 'remaining_count_icon',
+  value = "content/ui/materials/icons/presets/preset_21",
   visibility_function = function(content)
-    return content and content.remaining_count ~= nil and content.remaining_count ~= "-"
+    return content and content.remaining_count_icon ~= nil and content.remaining_count_icon ~= ""
   end
 }
 
--- Text style configuration
-local TEXT_STYLE = {
-  offset               = { -10, 9, 4 },
-  size                 = { 64, 64 },
+-- Texture style configuration
+local ICON_STYLE = {
+  offset               = { 0, 0, 4 },
+  size                 = { 32, 32 },
   vertical_alignment   = "center",
-  horizontal_alignment = "left"
+  horizontal_alignment = "center",
+  color                = { 255, 255, 255, 255 },
 }
-table.merge(TEXT_STYLE, table.clone(UIFontSettings.header_2))
 
 -- ============================================================================
 -- STATE & CACHES
@@ -105,16 +101,22 @@ table.merge(TEXT_STYLE, table.clone(UIFontSettings.header_2))
 -- Persistent storage
 local decals = mod:persistent_table("medical_crate_decals")
 local range_decals = mod:persistent_table("medical_crate_range_decals")
-local has_checked_package = mod:persistent_table("texture_check", { false })
 
 -- Runtime state
 local NumericUI = nil
 local charge_lookup = {}
-local healthstations = {}
+local healthstations = mod:persistent_table("health_stations")
 local interactee = {}
 
--- Caches for performance
-local ammo_crate_cache = {}
+-- Per-unit caches for the proximity-heal decal hook. Module-scope so the
+-- cleanup path (cleanup_decals) can reach them.
+local reserve_cache = {}
+local update_throttle = {}
+
+-- Weak keys: lets the GC drop entries once the engine releases the unit.
+-- ammo crates have no destroy hook, so this is the only cleanup they get.
+local ammo_crate_cache = setmetatable({}, { __mode = "k" })
+
 local field_improvisation_cache = { value = false, last_check = 0 }
 local FIELD_IMPROVISATION_CHECK_INTERVAL = 10
 
@@ -209,47 +211,6 @@ local function get_marker(self, unit)
   end
 end
 
-local function text_change(marker, model)
-  if not marker or not marker.unit or not marker.widget or not marker.widget.content or not marker.widget.style
-    or not marker.widget.style.remaining_count or not marker.widget.style.remaining_count.offset then
-    return
-  end
-
-  if healthstations[marker.unit] or not mod:get("show_numbers") then return end
-
-  local remaining_charges = get_charges(marker)
-  if not is_valid_charge_count(remaining_charges) then return end
-
-  marker.widget.content.remaining_count = remaining_charges
-
-  -- Update styling
-  local scale = marker.scale
-  local default_font_size = TEXT_STYLE.font_size
-  local default_offset = TEXT_STYLE.offset
-  local offset = marker.widget.style.remaining_count.offset
-  local charge_xoffset = CHARGE_XOFFSET[remaining_charges] or 0
-
-  -- Font size scaling
-  marker.widget.style.remaining_count.font_size = marker.is_clamped
-    and default_font_size
-    or math.max(default_font_size * scale, 8)
-
-  -- Offset scaling
-  if marker.is_clamped then
-    offset[1] = default_offset[1] - charge_xoffset
-    offset[2] = default_offset[2]
-  else
-    offset[1] = default_offset[1] * scale - charge_xoffset
-    offset[2] = default_offset[2] * scale
-  end
-
-  if mod:get("show_colours") then
-    marker.widget.style.remaining_count.text_color = FONT_CONTRAST[remaining_charges]
-  end
-
-  marker.widget.dirty = true
-end
-
 local function check_background_colour(marker)
   local charge = charge_lookup[marker.unit] or 0
   local remaining_charges = get_charges(marker)
@@ -271,45 +232,26 @@ local function has_field_improvisation(t)
     return field_improvisation_cache.value
   end
 
-  
-  if not Managers or not Managers.state or not Managers.state.extension then
-    field_improvisation_cache.value = false
-    if t then field_improvisation_cache.last_check = t end
-    return false
-  end
+  local result = false
+  local extension_manager = Managers and Managers.state and Managers.state.extension
+  local side_system = extension_manager and extension_manager:system("side_system")
+  local side = side_system and side_system:get_side_from_name(side_system:get_default_player_side_name())
+  local player_units = side and side.player_units
 
-  local side_system = Managers.state.extension:system("side_system")
-  if not side_system then
-    field_improvisation_cache.value = false
-    if t then field_improvisation_cache.last_check = t end
-    return false
-  end
-
-  local side = side_system:get_side_from_name(side_system:get_default_player_side_name())
-  if not side or not side.player_units then
-    field_improvisation_cache.value = false
-    if t then field_improvisation_cache.last_check = t end
-    return false
-  end
-
-  -- Check for field improvisation buff on any player
-  local player_units = side.player_units
-  local buff_keywords = BuffSettings.keywords
-
-  for i, player_unit in pairs(player_units) do
-    local buff_extension = ScriptUnit.extension(player_unit, "buff_system")
-    if buff_extension then
-      if buff_extension:has_keyword(buff_keywords.improved_ammo_pickups) then
-        field_improvisation_cache.value = true
-        if t then field_improvisation_cache.last_check = t end
-        return true
+  if player_units then
+    local kw = BuffSettings.keywords.improved_ammo_pickups
+    for _, player_unit in pairs(player_units) do
+      local buff_extension = ScriptUnit.extension(player_unit, "buff_system")
+      if buff_extension and buff_extension:has_keyword(kw) then
+        result = true
+        break
       end
     end
   end
 
-  field_improvisation_cache.value = false
+  field_improvisation_cache.value = result
   if t then field_improvisation_cache.last_check = t end
-  return false
+  return result
 end
 
 -- ============================================================================
@@ -365,6 +307,20 @@ local function cleanup_decals(unit)
     World.destroy_unit(world, range_decal)
     range_decals[unit] = nil
   end
+
+  -- Clear healthstation bookkeeping so a fresh unit with the same handle
+  -- doesn't short-circuit _update_indicators (which only registers when
+  -- healthstations[self._unit] is nil). Persistent table leaks otherwise.
+  -- The instance hook installed on the interactee extension stays orphaned
+  -- inside DMF until reload — no public unhook API.
+  local health_extension = healthstations[unit]
+  if health_extension then
+    interactee[health_extension] = nil
+    healthstations[unit] = nil
+  end
+  charge_lookup[unit] = nil
+  reserve_cache[unit] = nil
+  update_throttle[unit] = nil
 end
 
 local function spawn_decals(unit, dont_load_package)
@@ -414,14 +370,23 @@ function mod:apply_ration_pack_logic(marker)
 
     -- Configure widget passes
     for i, v in ipairs(marker.widget.passes) do
-      if v.value_id == "remaining_count" then
-        v.visibility_function = function(content, style) return not healthstations[marker.unit] and mod:get("show_numbers") end
-        v.change_function = function(model, style) text_change(marker, model) end
+      if v.value_id == "remaining_count_icon" then
+        v.visibility_function = function(content, style)
+          return healthstations[marker.unit]
+            and mod:get("show_numbers")
+            and content.remaining_count_icon ~= nil
+        end
       elseif v.value_id == "background" then
         v.change_function = function(model, style) check_background_colour(marker) end
       elseif v.value_id == "icon" then
         v.visibility_function = function(content, style)
           if healthstations[marker.unit] then
+            -- Hide the default icon when the roman numeral is taking over.
+            -- Fall back to the default if the numeral isn't drawable yet
+            -- (e.g. charges not synced) so the marker isn't blank.
+            if mod:get("show_numbers") and content.remaining_count_icon ~= nil then
+              return false
+            end
             return content.icon ~= nil
           end
           if is_ammo_crate(marker.unit) then
@@ -432,17 +397,22 @@ function mod:apply_ration_pack_logic(marker)
       end
     end
 
+    -- Initialize remaining_count_icon texture for healthstations
+    local remaining_charges = get_charges(marker)
+    if is_valid_charge_count(remaining_charges) then
+      marker.widget.content.remaining_count_icon = CHARGE_ICONS[remaining_charges]
+    end
+
     marker.widget.dirty = true
   else
-    -- Remove remaining_count pass for non-healthstations
     for i = #marker.widget.passes, 1, -1 do
-      if marker.widget.passes[i].value_id == "remaining_count" then
+      if marker.widget.passes[i].value_id == "remaining_count_icon" then
         table.remove(marker.widget.passes, i)
         break
       end
     end
-    marker.widget.style.remaining_count = nil
-    marker.widget.content.remaining_count = nil
+    marker.widget.style.remaining_count_icon = nil
+    marker.widget.content.remaining_count_icon = nil
   end
 
   marker.widget._ration_pack_applied = true
@@ -461,11 +431,11 @@ mod.on_all_mods_loaded = function()
     Managers.package:load(PACKAGE_NAME, "Ration Pack")
   end
 
-  -- Hook: Add remaining_count pass to widget definitions
+  -- Hook: Add remaining_count_icon pass to widget definitions
   mod:hook(CLASS.HudElementWorldMarkers, "_create_widget", function(func, self, name, definition)
-    definition.passes[#definition.passes + 1] = table.clone(TEXT_PASS)
-    definition.style.remaining_count = table.clone(TEXT_STYLE)
-    definition.content.remaining_count = "-"
+    definition.passes[#definition.passes + 1] = table.clone(ICON_PASS)
+    definition.style.remaining_count_icon = table.clone(ICON_STYLE)
+    definition.content.remaining_count_icon = nil
     return func(self, name, definition)
   end)
 
@@ -492,21 +462,28 @@ mod.on_all_mods_loaded = function()
             end
           end
 
-          -- Update font scaling every frame
-          if marker.widget.style and marker.widget.style.remaining_count then
-            -- Only get charges for units that support it (ammo crates or health stations)
-            if is_ammo_crate(marker.unit) or healthstations[marker.unit] then
+          -- Scale remaining_count_icon based on view distance
+          if marker.widget and marker.widget.style and marker.widget.style.remaining_count_icon then
+            local global_scale = marker.ignore_scale and 1 or marker.scale
+            local icon_style = marker.widget.style.remaining_count_icon
+            icon_style.size[1] = ICON_STYLE.size[1] * global_scale
+            icon_style.size[2] = ICON_STYLE.size[2] * global_scale
+          end
+
+          -- Refresh healthstation numeral content (runs even when pass is hidden,
+          -- so it can bootstrap content.remaining_count_icon out of nil)
+          if healthstations[marker.unit] and marker.widget and marker.widget.content then
+            local content = marker.widget.content
+            local new_icon = nil
+            if mod:get("show_numbers") then
               local remaining_charges = get_charges(marker)
               if is_valid_charge_count(remaining_charges) then
-                local default_font_size = TEXT_STYLE.font_size
-                local default_offset = TEXT_STYLE.offset
-                local offset = marker.widget.style.remaining_count.offset
-                local charge_xoffset = CHARGE_XOFFSET[remaining_charges] or 0
-
-                marker.widget.style.remaining_count.font_size = default_font_size
-                offset[1] = default_offset[1] - charge_xoffset
-                offset[2] = default_offset[2]
+                new_icon = CHARGE_ICONS[remaining_charges]
               end
+            end
+            if content.remaining_count_icon ~= new_icon then
+              content.remaining_count_icon = new_icon
+              marker.widget.dirty = true
             end
           end
         end
@@ -538,7 +515,7 @@ mod.on_all_mods_loaded = function()
 
           if is_valid_charge_count(remaining_charges) then
             if mod:get("show_numbers") then
-              content.remaining_count = remaining_charges
+              content.remaining_count_icon = CHARGE_ICONS[remaining_charges]
             end
 
             if mod:get("show_colours") then
@@ -576,7 +553,7 @@ mod.on_all_mods_loaded = function()
 
         mod:hook(interactee[self], "show_marker", function(func, self, interactor_unit)
           if healthstations[self._unit]._charge_amount > 0 then
-            return function() return true end
+            return true
           end
           return func(self, interactor_unit)
         end)
@@ -606,34 +583,33 @@ mod.on_all_mods_loaded = function()
   end)
 
   -- Hook: Update proximity heal visual
-  local reserve = 0
-  local updateThrottle = {}
-
   mod:hook_safe(CLASS.ProximityHeal, "update", function(self, dt, t)
     if not mod:get("show_medicae_radius") then return end
-    if not is_valid_unit(self._unit) or not decals[self._unit] then return end
+    local unit = self._unit
+    if not is_valid_unit(unit) or not decals[unit] then return end
 
     -- Throttle updates
-    if not updateThrottle[self._unit] then updateThrottle[self._unit] = t end
-    if t - updateThrottle[self._unit] < UPDATE_THROTTLE_INTERVAL then return end
-    updateThrottle[self._unit] = t
+    if not update_throttle[unit] then update_throttle[unit] = t end
+    if t - update_throttle[unit] < UPDATE_THROTTLE_INTERVAL then return end
+    update_throttle[unit] = t
 
     -- Update decal color based on field improvisation
     if has_field_improvisation(t) then
-      set_decal_colour(decals[self._unit], FIELD_IMPROVEMENT_COLOR.r, FIELD_IMPROVEMENT_COLOR.g, FIELD_IMPROVEMENT_COLOR.b)
+      set_decal_colour(decals[unit], FIELD_IMPROVEMENT_COLOR.r, FIELD_IMPROVEMENT_COLOR.g, FIELD_IMPROVEMENT_COLOR.b)
     else
-      set_decal_colour(decals[self._unit], DEFAULT_DECAL_COLOR.r, DEFAULT_DECAL_COLOR.g, DEFAULT_DECAL_COLOR.b)
+      set_decal_colour(decals[unit], DEFAULT_DECAL_COLOR.r, DEFAULT_DECAL_COLOR.g, DEFAULT_DECAL_COLOR.b)
     end
 
-    -- Update decal size based on remaining heal amount
-    if self._amount_of_damage_healed ~= reserve then
+    -- Update decal size based on remaining heal amount.
+    -- reserve_cache is per-unit; a shared scalar thrashed between crates.
+    if self._amount_of_damage_healed ~= reserve_cache[unit] then
       local diameter = math.lerp(
         medical_crate_config.proximity_radius * 2 + DECAL_BASE_DIAMETER_OFFSET,
         DECAL_BASE_DIAMETER_OFFSET,
         self._amount_of_damage_healed / self._heal_reserve
       )
-      Unit.set_local_scale(decals[self._unit], 1, Vector3(diameter, diameter, 1))
-      reserve = self._amount_of_damage_healed
+      Unit.set_local_scale(decals[unit], 1, Vector3(diameter, diameter, 1))
+      reserve_cache[unit] = self._amount_of_damage_healed
     end
   end)
 end
