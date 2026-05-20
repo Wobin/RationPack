@@ -1,9 +1,9 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 16/05/2026
+Date: 20/05/2026
 Repository: https://github.com/Wobin/RationPack
-Version: 7.2
+Version: 7.3
 ]] --
 
 -- ============================================================================
@@ -11,7 +11,7 @@ Version: 7.2
 -- ============================================================================
 
 local mod = get_mod("Ration Pack")
-mod.version = "7.2"
+mod.version = "7.3"
 
 -- ============================================================================
 -- IMPORTS
@@ -42,6 +42,7 @@ local math = math
 -- Asset paths
 local DECAL_UNIT_NAME = "content/levels/training_grounds/fx/decal_aoe_indicator"
 local PACKAGE_NAME = "content/levels/training_grounds/missions/mission_tg_basic_combat_01"
+local NUMBER_PACKAGE = "packages/ui/views/inventory_background_view/inventory_background_view"
 
 -- Visual constants
 local DECAL_Z_OFFSET = 0.1
@@ -308,11 +309,6 @@ local function cleanup_decals(unit)
     range_decals[unit] = nil
   end
 
-  -- Clear healthstation bookkeeping so a fresh unit with the same handle
-  -- doesn't short-circuit _update_indicators (which only registers when
-  -- healthstations[self._unit] is nil). Persistent table leaks otherwise.
-  -- The instance hook installed on the interactee extension stays orphaned
-  -- inside DMF until reload — no public unhook API.
   local health_extension = healthstations[unit]
   if health_extension then
     interactee[health_extension] = nil
@@ -381,9 +377,7 @@ function mod:apply_ration_pack_logic(marker)
       elseif v.value_id == "icon" then
         v.visibility_function = function(content, style)
           if healthstations[marker.unit] then
-            -- Hide the default icon when the roman numeral is taking over.
-            -- Fall back to the default if the numeral isn't drawable yet
-            -- (e.g. charges not synced) so the marker isn't blank.
+
             if mod:get("show_numbers") and content.remaining_count_icon ~= nil then
               return false
             end
@@ -426,6 +420,8 @@ mod.on_all_mods_loaded = function()
   mod:info(mod.version)
   NumericUI = get_mod("NumericUI")
   local is_mod_loading = true
+    
+Managers.package:load(NUMBER_PACKAGE, "Ration Pack Numbers")
 
   if mod:get("show_medicae_radius") then
     Managers.package:load(PACKAGE_NAME, "Ration Pack")
@@ -455,7 +451,6 @@ mod.on_all_mods_loaded = function()
 
       for _, marker in ipairs(self._markers) do
         if is_valid_marker(marker) then
-          -- Apply logic if not yet applied
           if not marker.widget._ration_pack_applied then
             if is_ammo_crate(marker.unit) or healthstations[marker.unit] then
               mod:apply_ration_pack_logic(marker)
@@ -470,8 +465,6 @@ mod.on_all_mods_loaded = function()
             icon_style.size[2] = ICON_STYLE.size[2] * global_scale
           end
 
-          -- Refresh healthstation numeral content (runs even when pass is hidden,
-          -- so it can bootstrap content.remaining_count_icon out of nil)
           if healthstations[marker.unit] and marker.widget and marker.widget.content then
             local content = marker.widget.content
             local new_icon = nil
