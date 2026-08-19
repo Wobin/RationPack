@@ -1,0 +1,27 @@
+{
+	"name": "Ration Pack",
+	"description": "Sets the colour of the ammo crate icon to indicate how many charges left in the box",
+	"version": "7.3.1",
+	"author": "Wobin",
+	"homepage": "https://www.nexusmods.com/warhammer40kdarktide/mods/93",
+	"source": "https://github.com/Wobin/RationPack",
+	"funding": {
+		"kofi": "https://ko-fi.com/wobin_dwonderdog"
+	},
+	"nexusId": "93",
+	"localization": {
+		"ru": {
+			"name": "Патронный паёк",
+			"description": "Ration Pack - Отображает над разложенным контейнером боеприпасов цветную иконку, показывающую сколько в нём осталось зарядов."
+		},
+		"zh-cn": {
+			"name": "补给计数",
+			"description": "设置弹药箱图标颜色，表示箱中剩余多少次弹药补给"
+		}
+	},
+	"order": {
+		"require": [],
+		"this_after": [],
+		"this_before": []
+	}
+}

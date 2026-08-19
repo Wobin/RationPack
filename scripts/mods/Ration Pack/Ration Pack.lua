@@ -1,9 +1,8 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 20/05/2026
+Date: 20/08/2026
 Repository: https://github.com/Wobin/RationPack
-Version: 7.3
 ]] --
 
 -- ============================================================================
@@ -11,7 +10,7 @@ Version: 7.3
 -- ============================================================================
 
 local mod = get_mod("Ration Pack")
-mod.version = "7.3"
+mod.version = mod.get_metadata and mod:get_metadata("version") or "unknown"
 
 -- ============================================================================
 -- IMPORTS
@@ -42,7 +41,6 @@ local math = math
 -- Asset paths
 local DECAL_UNIT_NAME = "content/levels/training_grounds/fx/decal_aoe_indicator"
 local PACKAGE_NAME = "content/levels/training_grounds/missions/mission_tg_basic_combat_01"
-local NUMBER_PACKAGE = "packages/ui/views/inventory_background_view/inventory_background_view"
 
 -- Visual constants
 local DECAL_Z_OFFSET = 0.1
@@ -421,7 +419,6 @@ mod.on_all_mods_loaded = function()
   NumericUI = get_mod("NumericUI")
   local is_mod_loading = true
     
-Managers.package:load(NUMBER_PACKAGE, "Ration Pack Numbers")
 
   if mod:get("show_medicae_radius") then
     Managers.package:load(PACKAGE_NAME, "Ration Pack")

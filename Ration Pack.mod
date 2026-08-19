@@ -8,6 +8,7 @@ return {
 			mod_localization = "Ration Pack/scripts/mods/Ration Pack/Ration Pack_localization",
 		})
 	end,
-	version = "7.3",
-	packages = {},
+	packages = {
+		"packages/ui/views/inventory_background_view/inventory_background_view",
+	},
 }
