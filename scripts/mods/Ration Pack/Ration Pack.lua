@@ -1,7 +1,7 @@
 --[[
 Title: Ration Pack
 Author: Wobin
-Date: 20/08/2026
+Date: 30/09/2026
 Repository: https://github.com/Wobin/RationPack
 ]] --
 
@@ -18,6 +18,7 @@ mod.version = mod.get_metadata and mod:get_metadata("version") or "unknown"
 
 local BuffSettings = require("scripts/settings/buff/buff_settings")
 local medical_crate_config = require("scripts/settings/deployables/templates/medical_crate")
+local MEDICAL_CRATE_RADIUS = (medical_crate_config.proximity_check_params or medical_crate_config).proximity_radius
 
 -- ============================================================================
 -- LOCAL REFERENCE
@@ -278,7 +279,7 @@ local function get_decal_unit(unit, r, g, b)
 
   local decal_unit = World.spawn_unit_ex(world, DECAL_UNIT_NAME, nil, position + Vector3(0, 0, DECAL_Z_OFFSET))
 
-  local diameter = medical_crate_config.proximity_radius * 2 + DECAL_BASE_DIAMETER_OFFSET
+  local diameter = MEDICAL_CRATE_RADIUS * 2 + DECAL_BASE_DIAMETER_OFFSET
   Unit.set_local_scale(decal_unit, 1, Vector3(diameter, diameter, 1))
 
   set_decal_colour(decal_unit, r, g, b)
@@ -594,7 +595,7 @@ mod.on_all_mods_loaded = function()
     -- reserve_cache is per-unit; a shared scalar thrashed between crates.
     if self._amount_of_damage_healed ~= reserve_cache[unit] then
       local diameter = math.lerp(
-        medical_crate_config.proximity_radius * 2 + DECAL_BASE_DIAMETER_OFFSET,
+        MEDICAL_CRATE_RADIUS * 2 + DECAL_BASE_DIAMETER_OFFSET,
         DECAL_BASE_DIAMETER_OFFSET,
         self._amount_of_damage_healed / self._heal_reserve
       )
